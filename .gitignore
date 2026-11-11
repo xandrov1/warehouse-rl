@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Training outputs (large; share results separately)
+results/*
+!results/.gitkeep
+figures/*.mp4
+figures/*.gif
+
+# Logs
+runs/
+tensorboard/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

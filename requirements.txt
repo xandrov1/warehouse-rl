@@ -1,0 +1,8 @@
+gymnasium>=1.0
+pygame>=2.5
+stable-baselines3>=2.4
+sb3-contrib>=2.4
+matplotlib>=3.8
+numpy
+pandas
+tensorboard
