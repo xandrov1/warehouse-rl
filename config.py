@@ -21,3 +21,5 @@ EVAL_SEED_OFFSET = 10_000        # keeps eval layouts separate from training lay
 
 RESULTS_DIR = "results"
 FIGURES_DIR = "figures"
+# Episodes
+MAX_EPISODE_STEPS = 200          # episode is truncated after this many steps
