@@ -46,13 +46,12 @@ warehouse-rl/
 ├── test_map.py          # tests for the map generator
 ├── sanity_check.py      # environment checks, random vs. scripted agent
 ├── train_smoke.py       # short MaskablePPO run on the warehouse env
-├── record_demo.py       # rollout videos with the Pygame renderer
+├── record_demo.py       # GIF of the scripted robot or a trained model
 ├── env/
 │   ├── __init__.py
 │   ├── warehouse_map.py # warehouse layout generator
 │   ├── warehouse_env.py # Gymnasium environment
-│   ├── render.py        # Pygame drawing
-│   └── scripted.py      # shortest-path robot (reference, not a learner)
+│   └── render.py        # Pygame drawing
 ├── results/             # logs, saved models, eval CSVs
 └── figures/             # plots and videos
 ```
@@ -114,44 +113,31 @@ Note: under this rule, the paper's term "wrong shelf" should read "wrong deliver
 
 ## The environment (`env/warehouse_env.py`)
 
-```python
-from env import WarehouseEnv
-env = WarehouseEnv(clutter_density=0.10, render_mode="human")   # or "rgb_array", or None
-obs, info = env.reset(seed=0)
-obs, reward, terminated, truncated, info = env.step(env.action_masks().nonzero()[0][0])
-```
+- **Episode:** each reset builds a new map, picks one `D` as the order and puts the robot on a random open cell. It walks to the pickup zone, PICKs, walks to the order and DROPs. Episodes stop after 200 steps (`MAX_EPISODE_STEPS`).
+- **Actions:** up, down, left, right, PICK, DROP.
+- **Observation (11 numbers):** distance to the nearest obstacle in 8 directions, (dx, dy) to the target (pickup zone before PICK, the order after), and a carrying flag.
+- **Rewards:** from `config.py`. Bumping into something costs −1 and the robot stays put.
+- **Action masks:** PICK only on the pickup zone while empty-handed, DROP only on a `D` while carrying.
+- **`shortest_path`** in `info` is the fewest actions to finish (BFS), for the path-length metric.
 
-- **Episode:** `reset()` builds a new map, picks the order's delivery cell at random, and places the robot on a random open cell outside the pickup zone. The robot walks to the pickup zone, PICKs, walks to the delivery cell and DROPs. Episodes are truncated after `MAX_EPISODE_STEPS` (200, in `config.py`).
-- **Actions:** 0 up, 1 down, 2 left, 3 right, 4 PICK, 5 DROP.
-- **Observation (11 floats):** free cells to the nearest obstacle in 8 directions (N, NE, E, SE, S, SW, W, NW) divided by the grid size; (dx, dy) to the current target divided by the grid size (the nearest pickup cell before PICK, the delivery cell after); and a carrying flag.
-- **Rewards:** from `config.py`. Moving into a wall, shelf or clutter costs −1 and the robot stays put; the episode does not end.
-- **Action masks:** `action_masks()` allows PICK only on a pickup cell while empty-handed and DROP only on a delivery cell while carrying. Moves are always allowed.
-- **Info:** `event` (`pick`, `collision`, `delivered`, `wrong_drop` or `None`), `steps`, `collisions`, and `shortest_path`: the fewest actions that finish the task from the start (BFS), for the path-length metric.
-
-## Checks and demos
+## Checks and demo
 
 ```bash
-python sanity_check.py                 # check_env + random vs. scripted agent, 200 episodes per clutter level
-python train_smoke.py --steps 300000   # short MaskablePPO run -> figures/smoke_training.png
-python record_demo.py --policy scripted --clutter 0.10   # -> figures/demo_scripted_clutter10.mp4
-python record_demo.py --policy random --clutter 0.10
-python record_demo.py --policy model --model results/smoke/model.zip --clutter 0.0
+python sanity_check.py                # check_env, rendering, random vs. scripted robot
+python train_smoke.py                 # 300k-step MaskablePPO run -> figures/smoke_training.png
+python record_demo.py                 # GIF of the scripted robot (or --model results/smoke/model.zip)
 ```
-
-`record_demo.py` writes MP4 when `ffmpeg` is installed and GIF otherwise.
-
-Results on an M-series Mac mini (CPU):
 
 | Agent | Clutter | Success | Wrong drop | Mean return | Mean steps |
 |---|---|---|---|---|---|
-| Random (masked) | 0% | 0% | 12% | −35.35 | 188.4 |
-| Random (masked) | 20% | 0% | 14% | −67.91 | 189.5 |
+| Random (masked) | 0% | 0% | 14% | −34.69 | 184.9 |
+| Random (masked) | 20% | 0% | 10% | −69.03 | 191.2 |
 | Scripted shortest path | 0% | 100% | 0% | 9.73 | 26.5 |
 | Scripted shortest path | 20% | 100% | 0% | 9.62 | 37.9 |
 
-The scripted robot finishes every episode in exactly the BFS shortest path, so every generated task is solvable and the reward and termination logic is correct.
+The scripted robot finishes every episode in exactly the shortest path, so every task is solvable and the rewards and masks work.
 
-A 300k-step MaskablePPO run with no curriculum (0% clutter, seed 0) takes about 1 min 45 s, so a 2M-step run is about 12 minutes. Its mean return rises from −13 to −2 within 50k steps, as it learns to stop colliding and stop wrong drops, but it never completes a delivery. It settles on wandering safely for 200 steps (200 × −0.01 = −2). This is the sparse-reward problem the curriculum is meant to solve, and it is the expected starting point for the baseline.
+The 300k-step smoke run takes about a minute on CPU. Return goes from −13 to −2 but it never delivers: it learns to wander without crashing until time runs out. That's the sparse-reward problem the curriculum is for.
 
 ## Next: Step 6
 

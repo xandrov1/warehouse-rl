@@ -15,11 +15,11 @@ R_WRONG_DROP = -5.0
 R_COLLISION = -1.0
 R_STEP = -0.01
 
+MAX_EPISODE_STEPS = 200          # episode is cut off after this many steps
+
 # Evaluation
 EVAL_EPISODES = 200              # unseen Stage 4 layouts per seed
 EVAL_SEED_OFFSET = 10_000        # keeps eval layouts separate from training layouts
 
 RESULTS_DIR = "results"
 FIGURES_DIR = "figures"
-# Episodes
-MAX_EPISODE_STEPS = 200          # episode is truncated after this many steps
