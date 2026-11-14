@@ -6,16 +6,16 @@ A single robot in a 2D grid warehouse picks up an object at the pickup zone and 
 
 ## Status
 
-Project setup and the warehouse map generator are complete and tested. Training is not yet possible; the next step wraps the map in a Gymnasium environment.
+The simulation is complete and tested: the warehouse map, the Gymnasium environment with action masks, Pygame rendering, and the sanity checks. MaskablePPO trains on the environment end to end. The next step defines the curriculum stages.
 
 | Step | What | Status |
 |---|---|---|
 | 1 | Project setup and shared config | Done |
 | 2 | Warehouse map generator | Done |
-| 3 | Gymnasium environment (`reset`, `step`, observations, rewards, action masks) | Next |
-| 4 | Pygame rendering | Not started |
-| 5 | Sanity checks (random agent, `check_env`) | Not started |
-| 6 | Define Stages 1–4 | Not started |
+| 3 | Gymnasium environment (`reset`, `step`, observations, rewards, action masks) | Done |
+| 4 | Pygame rendering | Done |
+| 5 | Sanity checks (random agent, `check_env`) | Done |
+| 6 | Define Stages 1–4 | Next |
 | 7 | Curriculum logic (advance at >80% success over last 100 episodes) | Not started |
 | 8 | Training: curriculum vs. baseline, 5 seeds each | Not started |
 | 9 | Evaluation on unseen Stage 4 layouts | Not started |
@@ -44,11 +44,16 @@ warehouse-rl/
 ├── config.py            # all shared settings in one place
 ├── check_setup.py       # verifies the install
 ├── test_map.py          # tests for the map generator
+├── sanity_check.py      # environment checks, random vs. scripted agent
+├── train_smoke.py       # short MaskablePPO run on the warehouse env
+├── record_demo.py       # GIF of the scripted robot or a trained model
 ├── env/
 │   ├── __init__.py
-│   └── warehouse_map.py # warehouse layout generator
-├── results/             # logs, saved models, eval CSVs (later)
-└── figures/             # plots and videos (later)
+│   ├── warehouse_map.py # warehouse layout generator
+│   ├── warehouse_env.py # Gymnasium environment
+│   └── render.py        # Pygame drawing
+├── results/             # logs, saved models, eval CSVs
+└── figures/             # plots and videos
 ```
 
 ## config.py
@@ -106,14 +111,37 @@ A map has 64 possible delivery cells with no clutter, and 42–59 under heavy cl
 
 Note: under this rule, the paper's term "wrong shelf" should read "wrong delivery location."
 
-## Next: Step 3
+## The environment (`env/warehouse_env.py`)
 
-Gymnasium environment:
+- **Episode:** each reset builds a new map, picks one `D` as the order and puts the robot on a random open cell. It walks to the pickup zone, PICKs, walks to the order and DROPs. Episodes stop after 200 steps (`MAX_EPISODE_STEPS`).
+- **Actions:** up, down, left, right, PICK, DROP.
+- **Observation (11 numbers):** distance to the nearest obstacle in 8 directions, (dx, dy) to the target (pickup zone before PICK, the order after), and a carrying flag.
+- **Rewards:** from `config.py`. Bumping into something costs −1 and the robot stays put.
+- **Action masks:** PICK only on the pickup zone while empty-handed, DROP only on a `D` while carrying.
+- **`shortest_path`** in `info` is the fewest actions to finish (BFS), for the path-length metric.
 
-- `reset()`: build a map, place the robot, pick the goal `D`
-- `step()`: move the robot, handle PICK and DROP, return rewards
-- Observations: distance to the nearest obstacle in 8 directions (normalized), (dx, dy) to the current target, and a carrying flag
-- `action_masks()`: block invalid PICK and DROP
+## Checks and demo
+
+```bash
+python sanity_check.py                # check_env, rendering, random vs. scripted robot
+python train_smoke.py                 # 300k-step MaskablePPO run -> figures/smoke_training.png
+python record_demo.py                 # GIF of the scripted robot (or --model results/smoke/model.zip)
+```
+
+| Agent | Clutter | Success | Wrong drop | Mean return | Mean steps |
+|---|---|---|---|---|---|
+| Random (masked) | 0% | 0% | 14% | −34.69 | 184.9 |
+| Random (masked) | 20% | 0% | 10% | −69.03 | 191.2 |
+| Scripted shortest path | 0% | 100% | 0% | 9.73 | 26.5 |
+| Scripted shortest path | 20% | 100% | 0% | 9.62 | 37.9 |
+
+The scripted robot finishes every episode in exactly the shortest path, so every task is solvable and the rewards and masks work.
+
+The 300k-step smoke run takes about a minute on CPU. Return goes from −13 to −2 but it never delivers: it learns to wander without crashing until time runs out. That's the sparse-reward problem the curriculum is for.
+
+## Next: Step 6
+
+Define Stages 1–4 (goal distance, shelves, clutter level) as `WarehouseEnv` settings in `config.py`, so the curriculum and baseline share them.
 
 ## Possible extensions
 
