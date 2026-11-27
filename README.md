@@ -6,7 +6,7 @@ A single robot in a 2D grid warehouse picks up an object at the pickup zone and 
  
 ## Status
  
-The environment is complete and tested: map generator, Gymnasium environment, and Pygame rendering. Training has not started; the next steps prepare the curriculum and training runs.
+The environment is complete and tested. The first training runs are done (3 seeds per agent, 1.5M steps): the curriculum agent passes the navigation stages but gets stuck at Stage 3 (pick and drop), and the baseline never delivers. See [Phase 2 results](#phase-2-results).
  
 | Step | What | Status |
 |---|---|---|
@@ -14,12 +14,12 @@ The environment is complete and tested: map generator, Gymnasium environment, an
 | 2 | Warehouse map generator | Done |
 | 3 | Gymnasium environment (`reset`, `step`, observations, rewards, action masks) | Done |
 | 4 | Pygame rendering | Done |
-| 5 | Sanity checks (random agent, `check_env`) | Next |
-| 6 | Define Stages 1–4 | Not started |
-| 7 | Curriculum logic (advance at >80% success over last 100 episodes) | Not started |
-| 8 | Training: curriculum vs. baseline, 5 seeds each | Not started |
-| 9 | Evaluation on unseen Stage 4 layouts | Not started |
-| 10 | Plots, results, rollout videos | Not started |
+| 5 | Sanity checks (random agent, `check_env`) | Done |
+| 6 | Define Stages 1–4 | Done (Stage 3 needs rework) |
+| 7 | Curriculum logic (advance at >80% success over last 100 episodes) | Done |
+| 8 | Training: curriculum vs. baseline, 5 seeds each | First runs: 3 seeds each, 1.5M steps |
+| 9 | Evaluation on unseen Stage 4 layouts | Done for the first runs |
+| 10 | Plots, results, rollout videos | First version |
  
 ## Setup
  
@@ -166,9 +166,34 @@ The environment supports three render modes: `human` (live window, drawn automat
  
 The scripted agents in `env/scripted.py` are references, not learning agents. The expert uses BFS on the full map and always takes the shortest route (about +9.4 reward per episode); the random agent picks any valid action (typically runs out of steps with around −60 reward). A `--agent trained` option will be added once models are trained.
  
-## Next: Step 5
- 
-Sanity checks before training: Stable-Baselines3's `check_env`, a random-agent baseline, and a short MaskablePPO training run to confirm the full pipeline works.
+## Phase 2 results
+
+```bash
+python sanity_check.py                                   # Step 5
+python train.py --agent curriculum --seed 0 --steps 1500000
+python train.py --agent baseline --seed 0 --steps 1500000
+python evaluate.py                                       # results/eval.csv
+python plot.py                                           # figures/learning_curves.png
+python record_video.py --seed 1                          # figures/phase2_demo.mp4
+```
+
+**Stages** (in `config.py`): 1 navigate, 5% clutter, start at most 6 cells from the goal · 2 navigate, 10% clutter, any start · 3 full task, 10% clutter, start at most 6 cells from the pickup zone · 4 full task, 20% clutter (the real task).
+
+**Sanity checks:** `check_env` passes (Gymnasium and SB3). Over 800 episodes the scripted expert delivered 800/800 in the shortest path; a random agent delivered 1/800.
+
+![learning curves](figures/learning_curves.png)
+
+| | Result (3 seeds) |
+|---|---|
+| Curriculum, Stages 1–2 | Passed Stage 1 at 44k–63k steps and Stage 2 at 335k–357k steps |
+| Curriculum, checkpoint after Stage 2 | Reaches the goal on 71–75% of 100 unseen Stage 2 layouts |
+| Same checkpoint on Stage 3 | Picks up 94–99% of the time, but 72–82% of episodes end in a wrong drop; 11–12% success |
+| Curriculum, end of training | 0% on Stage 3 for the last 1.1M steps; it learns to stand still and forgets navigation (8–14% on Stage 2) |
+| Baseline (Stage 4 only) | 0% on 200 unseen Stage 4 layouts; also learns to stand still |
+
+**Why Stage 3 stalls:** after the navigation stages the robot drops the object on the first delivery cell it reaches. Most of those drops are wrong (−5), and standing still for 200 steps only costs −2, so PPO settles on standing still. An easier Stage 3 (`--v2`, order within 6 cells of the pickup zone) briefly reached 16–22% training success and then collapsed the same way.
+
+**Next:** a bridge stage where wrong drops are rare (order close to the pickup zone and few other delivery cells nearby), mixing in earlier-stage episodes so navigation is not forgotten, and an entropy bonus so the policy keeps exploring. Frame stacking for the back-and-forth loops in front of shelves. If Stage 3 still stalls, the backup plan from the proposal: PICK and DROP are scripted and the policy only learns navigation, which already works.
  
 ## Possible extensions
  
