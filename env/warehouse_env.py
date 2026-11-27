@@ -30,13 +30,15 @@ class WarehouseEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array", "ansi"], "render_fps": 8}
 
     def __init__(self, width=15, height=15, shelves=True, clutter_density=0.20,
-                 task="full", max_goal_dist=None, max_steps=200, render_mode=None):
+                 task="full", max_goal_dist=None, max_order_dist=None, max_steps=200,
+                 render_mode=None):
         super().__init__()
         assert task in ("full", "navigate")
         assert shelves or task == "navigate", "the full task needs shelves"
         self.settings = dict(width=width, height=height, shelves=shelves,
                              clutter_density=clutter_density, task=task,
-                             max_goal_dist=max_goal_dist, max_steps=max_steps)
+                             max_goal_dist=max_goal_dist, max_order_dist=max_order_dist,
+                             max_steps=max_steps)
         assert render_mode is None or render_mode in self.metadata["render_modes"]
         self.render_mode = render_mode
         self.renderer = None
@@ -173,6 +175,11 @@ class WarehouseEnv(gym.Env):
 
         if s["task"] == "full":
             goal_choices = list(m.delivery_cells)
+            if s["max_order_dist"] is not None:
+                # full task: limit how far the order's delivery cell is from the pickup zone
+                pick_dist = self._dist_to_pickup()
+                near = [c for c in goal_choices if 0 <= pick_dist[c[1], c[0]] <= s["max_order_dist"]]
+                goal_choices = near or goal_choices
         else:
             # navigate: delivery cells if there are shelves, otherwise any open cell
             goal_choices = list(m.delivery_cells) or [c for c in m.free_cells()
